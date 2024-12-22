@@ -1,24 +1,26 @@
 const express = require('express');
 const axios = require('axios');
+const fs = require('fs');
 const path = require('path');
 const { fork } = require('child_process');
 
 const proxyCheckerPath = path.join(__dirname, 'proxyChecker.js');
+const liveProxiesFile = 'live.txt';
 
 // Jalankan proxyChecker.js di latar belakang
 const proxyCheckerProcess = fork(proxyCheckerPath);
 
-let liveProxies = [];
-
-proxyCheckerProcess.on('message', (message) => {
-  if (message.type === 'updateProxies') {
-    liveProxies = message.data;
-    console.log('Live proxies updated in app.js:', liveProxies);
-  }
-});
-
 const app = express();
 const port = 3000;
+
+// Function to load live proxies from file
+function loadLiveProxies() {
+  if (fs.existsSync(liveProxiesFile)) {
+    const proxies = fs.readFileSync(liveProxiesFile, 'utf-8').split('\n').filter(proxy => proxy.trim() !== '');
+    return proxies;
+  }
+  return [];
+}
 
 // Endpoint health check
 app.get('/health', (req, res) => {
@@ -47,6 +49,7 @@ app.get('/api', async (req, res) => {
     return res.status(400).send('URL is required');
   }
 
+  const liveProxies = loadLiveProxies(); // Load live proxies from file
   console.log('Current live proxies:', liveProxies); // Logging tambahan untuk debug
 
   if (liveProxies.length === 0) {
@@ -55,6 +58,7 @@ app.get('/api', async (req, res) => {
 
   // Rotate proxies
   const proxy = liveProxies[Math.floor(Math.random() * liveProxies.length)];
+  console.log('Selected proxy:', proxy); // Logging tambahan untuk debug
 
   try {
     const response = await axios.get(url, {
@@ -66,6 +70,7 @@ app.get('/api', async (req, res) => {
     });
     res.send(response.data);
   } catch (error) {
+    console.error('Error using proxy:', error); // Logging tambahan untuk debug
     res.status(500).send('Failed to fetch URL through proxy');
   }
 });
