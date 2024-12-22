@@ -1,38 +1,37 @@
 const express = require('express');
 const axios = require('axios');
+const fs = require('fs');
 const path = require('path');
 const { fork } = require('child_process');
 
 const proxyCheckerPath = path.join(__dirname, 'proxyChecker.js');
-const MAX_RETRIES = 5;  // Jumlah maksimal percobaan ulang
+const liveProxiesFile = 'live.txt';
+const MAX_RETRIES = 7;  // Jumlah maksimal percobaan ulang
 
 // Jalankan proxyChecker.js di latar belakang
 const proxyCheckerProcess = fork(proxyCheckerPath);
 
-let liveProxies = [];
-let blacklistProxies = [];
+const app = express();
+const port = 3000;
 
-// Function to load live proxies from proxyChecker.js
-proxyCheckerProcess.on('message', (message) => {
-  if (message.type === 'updateProxies') {
-    liveProxies = message.data;
-    console.log('Live proxies updated in app.js:', liveProxies);
+// Function to load live proxies from file
+function loadLiveProxies() {
+  if (fs.existsSync(liveProxiesFile)) {
+    const proxies = fs.readFileSync(liveProxiesFile, 'utf-8').split('\n').filter(proxy => proxy.trim() !== '');
+    return proxies;
   }
-});
+  return [];
+}
 
 // Function to fetch URL through proxy with retries
 async function fetchUrlWithRetries(url, proxies, retries = MAX_RETRIES) {
   for (let i = 0; i < retries; i++) {
-    const proxyObj = proxies[Math.floor(Math.random() * proxies.length)];
-    if (blacklistProxies.includes(proxyObj)) {
-      continue;  // Skip blacklisted proxies
-    }
-
+    const proxy = proxies[Math.floor(Math.random() * proxies.length)];
     try {
       const response = await axios.get(url, {
         proxy: {
-          host: proxyObj.split(':')[0],
-          port: parseInt(proxyObj.split(':')[1]),
+          host: proxy.split(':')[0],
+          port: parseInt(proxy.split(':')[1]),
         },
         timeout: 10000,  // Perpanjang waktu timeout
         httpsAgent: new (require('https').Agent)({
@@ -41,17 +40,16 @@ async function fetchUrlWithRetries(url, proxies, retries = MAX_RETRIES) {
       });
       return response.data;  // Return the data if successful
     } catch (error) {
-      console.error(`Attempt ${i + 1} failed with proxy ${proxyObj}:`, error.message);
-      // Add problematic proxy to blacklist
-      blacklistProxies.push(proxyObj);
+      console.error(`Attempt ${i + 1} failed with proxy ${proxy}:`, error.message);
+      // Filter out problematic proxies
+      proxies = proxies.filter(p => p !== proxy);
+      if (proxies.length === 0) {
+        throw new Error('No more proxies available');
+      }
     }
   }
   throw new Error('All retries failed');  // Throw an error if all retries fail
 }
-
-// Inisialisasi aplikasi Express
-const app = express();
-const port = 3000;
 
 // Endpoint health check
 app.get('/health', (req, res) => {
@@ -80,15 +78,14 @@ app.get('/api', async (req, res) => {
     return res.status(400).send('URL is required');
   }
 
-  // Filter out blacklisted proxies from live proxies
-  const validProxies = liveProxies.filter(proxy => !blacklistProxies.includes(proxy));
+  let liveProxies = loadLiveProxies(); // Load live proxies from file
 
-  if (validProxies.length === 0) {
+  if (liveProxies.length === 0) {
     return res.status(503).send('No live proxies available');
   }
 
   try {
-    const data = await fetchUrlWithRetries(url, validProxies);
+    const data = await fetchUrlWithRetries(url, liveProxies);
     res.send(data);
   } catch (error) {
     res.status(500).send('Unable to fetch URL through proxy after multiple attempts');
