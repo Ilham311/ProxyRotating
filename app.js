@@ -3,16 +3,16 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { fork } = require('child_process');
+const config = require('./config');
 
 const proxyCheckerPath = path.join(__dirname, 'proxyChecker.js');
 const liveProxiesFile = 'live.txt';
-const MAX_RETRIES = 7;  // Jumlah maksimal percobaan ulang
 
 // Jalankan proxyChecker.js di latar belakang
 const proxyCheckerProcess = fork(proxyCheckerPath);
 
 const app = express();
-const port = 3000;
+const port = config.PORT;
 
 // Function to load live proxies from file
 function loadLiveProxies() {
@@ -24,7 +24,7 @@ function loadLiveProxies() {
 }
 
 // Function to fetch URL through proxy with retries
-async function fetchUrlWithRetries(url, proxies, retries = MAX_RETRIES) {
+async function fetchUrlWithRetries(url, proxies, retries = config.MAX_RETRIES) {
   for (let i = 0; i < retries; i++) {
     const proxy = proxies[Math.floor(Math.random() * proxies.length)];
     try {
@@ -33,22 +33,21 @@ async function fetchUrlWithRetries(url, proxies, retries = MAX_RETRIES) {
           host: proxy.split(':')[0],
           port: parseInt(proxy.split(':')[1]),
         },
-        timeout: 10000,  // Perpanjang waktu timeout
+        timeout: config.TIMEOUT,
         httpsAgent: new (require('https').Agent)({
-          rejectUnauthorized: false  // Abaikan kesalahan sertifikat
-        })
+          rejectUnauthorized: false,
+        }),
       });
-      return response.data;  // Return the data if successful
+      return response.data;
     } catch (error) {
       console.error(`Attempt ${i + 1} failed with proxy ${proxy}:`, error.message);
-      // Filter out problematic proxies
       proxies = proxies.filter(p => p !== proxy);
       if (proxies.length === 0) {
         throw new Error('No more proxies available');
       }
     }
   }
-  throw new Error('All retries failed');  // Throw an error if all retries fail
+  throw new Error('All retries failed');
 }
 
 // Endpoint health check
@@ -78,7 +77,7 @@ app.get('/api', async (req, res) => {
     return res.status(400).send('URL is required');
   }
 
-  let liveProxies = loadLiveProxies(); // Load live proxies from file
+  let liveProxies = loadLiveProxies();
 
   if (liveProxies.length === 0) {
     return res.status(503).send('No live proxies available');
