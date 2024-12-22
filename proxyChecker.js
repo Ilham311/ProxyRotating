@@ -7,7 +7,7 @@ const liveProxiesFile = 'live.txt';
 
 if (isMainThread) {
   // Jumlah worker yang akan digunakan
-  const numWorkers = 2;
+  const numWorkers = 5;
   let liveProxies = [];
 
   // Function to start the workers
@@ -23,7 +23,7 @@ if (isMainThread) {
         if (message.type === 'updateProxies') {
           liveProxies = liveProxies.concat(message.data);
           // Save live proxies to file
-          fs.writeFileSync(liveProxiesFile, JSON.stringify(liveProxies, null, 2));
+          fs.writeFileSync(liveProxiesFile, liveProxies.join('\n'));
           console.log('Live proxies updated and saved to live.txt:', liveProxies);
         }
       });
@@ -56,9 +56,9 @@ if (isMainThread) {
   // This block is executed in the worker thread
   const proxyList = workerData;
 
-  async function checkProxy(proxy, protocol) {
+  async function checkProxy(proxy) {
     try {
-      const response = await axios.get(`${protocol}://www.google.com`, {
+      const response = await axios.get('http://www.google.com', {
         proxy: {
           host: proxy.split(':')[0],
           port: parseInt(proxy.split(':')[1]),
@@ -79,17 +79,10 @@ if (isMainThread) {
     const workingProxies = [];
 
     await Promise.all(proxyList.map(async (proxy) => {
-      const isWorkingHttp = await checkProxy(proxy, 'http');
-      const isWorkingHttps = await checkProxy(proxy, 'https');
-
-      if (isWorkingHttp || isWorkingHttps) {
-        workingProxies.push({
-          proxy,
-          protocol: isWorkingHttps ? 'https' : 'http'
-        });
-        console.log(`Proxy ${proxy} is working with ${isWorkingHttps ? 'HTTPS' : 'HTTP'}`);
-      } else {
-        console.log(`Proxy ${proxy} is not working`);
+      const isWorking = await checkProxy(proxy);
+      console.log(`Proxy ${proxy} is ${isWorking ? 'working' : 'not working'}`);
+      if (isWorking) {
+        workingProxies.push(proxy);
       }
     }));
 
