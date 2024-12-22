@@ -1,7 +1,7 @@
 const express = require('express');
 const axios = require('axios');
-const { fork } = require('child_process');
 const path = require('path');
+const { fork } = require('child_process');
 
 const proxyCheckerPath = path.join(__dirname, 'proxyChecker.js');
 
@@ -19,6 +19,27 @@ proxyCheckerProcess.on('message', (message) => {
 const app = express();
 const port = 3000;
 
+// Endpoint health check
+app.get('/health', (req, res) => {
+  res.status(200).send('Health check OK');
+});
+
+// Halaman web sederhana pada path /
+app.get('/', (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>Proxy API</title>
+      </head>
+      <body>
+        <h1>Welcome to Proxy API</h1>
+        <p>Use the endpoint <code>/api?url=</code> to access URLs through a proxy.</p>
+      </body>
+    </html>
+  `);
+});
+
+// Endpoint API untuk mengakses URL melalui proxy yang hidup
 app.get('/api', async (req, res) => {
   const url = req.query.url;
   if (!url) {
