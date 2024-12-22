@@ -6,7 +6,7 @@ const { fork } = require('child_process');
 
 const proxyCheckerPath = path.join(__dirname, 'proxyChecker.js');
 const liveProxiesFile = 'live.txt';
-const MAX_RETRIES = 7;  // Jumlah maksimal percobaan ulang
+const MAX_RETRIES = 5;  // Jumlah maksimal percobaan ulang
 
 // Jalankan proxyChecker.js di latar belakang
 const proxyCheckerProcess = fork(proxyCheckerPath);
@@ -17,7 +17,7 @@ const port = 3000;
 // Function to load live proxies from file
 function loadLiveProxies() {
   if (fs.existsSync(liveProxiesFile)) {
-    const proxies = fs.readFileSync(liveProxiesFile, 'utf-8').split('\n').filter(proxy => proxy.trim() !== '');
+    const proxies = JSON.parse(fs.readFileSync(liveProxiesFile, 'utf-8'));
     return proxies;
   }
   return [];
@@ -26,23 +26,24 @@ function loadLiveProxies() {
 // Function to fetch URL through proxy with retries
 async function fetchUrlWithRetries(url, proxies, retries = MAX_RETRIES) {
   for (let i = 0; i < retries; i++) {
-    const proxy = proxies[Math.floor(Math.random() * proxies.length)];
+    const proxyObj = proxies[Math.floor(Math.random() * proxies.length)];
     try {
       const response = await axios.get(url, {
         proxy: {
-          host: proxy.split(':')[0],
-          port: parseInt(proxy.split(':')[1]),
+          host: proxyObj.proxy.split(':')[0],
+          port: parseInt(proxyObj.proxy.split(':')[1]),
         },
         timeout: 10000,  // Perpanjang waktu timeout
         httpsAgent: new (require('https').Agent)({
           rejectUnauthorized: false  // Abaikan kesalahan sertifikat
-        })
+        }),
+        baseURL: `${proxyObj.protocol}://${url}`
       });
       return response.data;  // Return the data if successful
     } catch (error) {
-      console.error(`Attempt ${i + 1} failed with proxy ${proxy}:`, error.message);
+      console.error(`Attempt ${i + 1} failed with proxy ${proxyObj.protocol}://${proxyObj.proxy}:`, error.message);
       // Filter out problematic proxies
-      proxies = proxies.filter(p => p !== proxy);
+      proxies = proxies.filter(p => p.proxy !== proxyObj.proxy);
       if (proxies.length === 0) {
         throw new Error('No more proxies available');
       }
