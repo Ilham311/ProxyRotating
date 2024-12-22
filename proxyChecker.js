@@ -36,7 +36,6 @@ async function checkProxies() {
   const proxies = await fetchProxyList();
   const workingProxies = [];
 
-  // Parallel checking of proxies
   await Promise.all(proxies.map(async (proxy) => {
     const isWorking = await checkProxy(proxy);
     console.log(`Proxy ${proxy} is ${isWorking ? 'working' : 'not working'}`);
@@ -47,6 +46,11 @@ async function checkProxies() {
 
   liveProxies = workingProxies;
   console.log('Live proxies updated:', liveProxies);
+
+  // Send updated proxies to the parent process
+  if (process.send) {
+    process.send({ type: 'updateProxies', data: liveProxies });
+  }
 }
 
 async function startChecking() {
@@ -55,7 +59,3 @@ async function startChecking() {
 }
 
 startChecking();
-
-module.exports = {
-  getLiveProxies: () => liveProxies,
-};
