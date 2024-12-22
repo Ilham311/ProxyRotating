@@ -1,7 +1,9 @@
-const axios = require('axios'); 
+const axios = require('axios');
+const fs = require('fs');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 
 const proxyListUrl = 'https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt';
+const liveProxiesFile = 'live.txt';
 
 if (isMainThread) {
   // This block is executed in the main thread
@@ -14,7 +16,9 @@ if (isMainThread) {
     worker.on('message', (message) => {
       if (message.type === 'updateProxies') {
         liveProxies = message.data;
-        console.log('Live proxies updated:', liveProxies);
+        // Save live proxies to file
+        fs.writeFileSync(liveProxiesFile, liveProxies.join('\n'));
+        console.log('Live proxies updated and saved to live.txt:', liveProxies);
       }
     });
 
@@ -78,6 +82,8 @@ if (isMainThread) {
         workingProxies.push(proxy);
       }
     }));
+
+    console.log('Sending updated proxies to app.js:', workingProxies);
 
     // Send updated proxies to the parent thread
     parentPort.postMessage({ type: 'updateProxies', data: workingProxies });
