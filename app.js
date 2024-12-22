@@ -6,7 +6,7 @@ const { fork } = require('child_process');
 
 const proxyCheckerPath = path.join(__dirname, 'proxyChecker.js');
 const liveProxiesFile = 'live.txt';
-const MAX_RETRIES = 5;  // Jumlah maksimal percobaan ulang
+const MAX_RETRIES = 7;  // Jumlah maksimal percobaan ulang
 
 // Jalankan proxyChecker.js di latar belakang
 const proxyCheckerProcess = fork(proxyCheckerPath);
@@ -33,11 +33,19 @@ async function fetchUrlWithRetries(url, proxies, retries = MAX_RETRIES) {
           host: proxy.split(':')[0],
           port: parseInt(proxy.split(':')[1]),
         },
-        timeout: 5000,
+        timeout: 10000,  // Perpanjang waktu timeout
+        httpsAgent: new (require('https').Agent)({
+          rejectUnauthorized: false  // Abaikan kesalahan sertifikat
+        })
       });
       return response.data;  // Return the data if successful
     } catch (error) {
       console.error(`Attempt ${i + 1} failed with proxy ${proxy}:`, error.message);
+      // Filter out problematic proxies
+      proxies = proxies.filter(p => p !== proxy);
+      if (proxies.length === 0) {
+        throw new Error('No more proxies available');
+      }
     }
   }
   throw new Error('All retries failed');  // Throw an error if all retries fail
@@ -70,7 +78,7 @@ app.get('/api', async (req, res) => {
     return res.status(400).send('URL is required');
   }
 
-  const liveProxies = loadLiveProxies(); // Load live proxies from file
+  let liveProxies = loadLiveProxies(); // Load live proxies from file
 
   if (liveProxies.length === 0) {
     return res.status(503).send('No live proxies available');
