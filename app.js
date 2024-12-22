@@ -6,6 +6,7 @@ const { fork } = require('child_process');
 
 const proxyCheckerPath = path.join(__dirname, 'proxyChecker.js');
 const liveProxiesFile = 'live.txt';
+const MAX_RETRIES = 5;  // Jumlah maksimal percobaan ulang
 
 // Jalankan proxyChecker.js di latar belakang
 const proxyCheckerProcess = fork(proxyCheckerPath);
@@ -20,6 +21,26 @@ function loadLiveProxies() {
     return proxies;
   }
   return [];
+}
+
+// Function to fetch URL through proxy with retries
+async function fetchUrlWithRetries(url, proxies, retries = MAX_RETRIES) {
+  for (let i = 0; i < retries; i++) {
+    const proxy = proxies[Math.floor(Math.random() * proxies.length)];
+    try {
+      const response = await axios.get(url, {
+        proxy: {
+          host: proxy.split(':')[0],
+          port: parseInt(proxy.split(':')[1]),
+        },
+        timeout: 5000,
+      });
+      return response.data;  // Return the data if successful
+    } catch (error) {
+      console.error(`Attempt ${i + 1} failed with proxy ${proxy}:`, error.message);
+    }
+  }
+  throw new Error('All retries failed');  // Throw an error if all retries fail
 }
 
 // Endpoint health check
@@ -50,28 +71,16 @@ app.get('/api', async (req, res) => {
   }
 
   const liveProxies = loadLiveProxies(); // Load live proxies from file
-  console.log('Current live proxies:', liveProxies); // Logging tambahan untuk debug
 
   if (liveProxies.length === 0) {
     return res.status(503).send('No live proxies available');
   }
 
-  // Rotate proxies
-  const proxy = liveProxies[Math.floor(Math.random() * liveProxies.length)];
-  console.log('Selected proxy:', proxy); // Logging tambahan untuk debug
-
   try {
-    const response = await axios.get(url, {
-      proxy: {
-        host: proxy.split(':')[0],
-        port: parseInt(proxy.split(':')[1]),
-      },
-      timeout: 5000,
-    });
-    res.send(response.data);
+    const data = await fetchUrlWithRetries(url, liveProxies);
+    res.send(data);
   } catch (error) {
-    console.error('Error using proxy:', error); // Logging tambahan untuk debug
-    res.status(500).send('Failed to fetch URL through proxy');
+    res.status(500).send('Unable to fetch URL through proxy after multiple attempts');
   }
 });
 
