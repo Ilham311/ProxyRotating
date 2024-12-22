@@ -1,4 +1,4 @@
-const axios = require('axios');
+const axios = require('axios'); 
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 
 const proxyListUrl = 'https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt';
