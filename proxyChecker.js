@@ -6,55 +6,59 @@ const proxyListUrl = 'https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/mas
 const liveProxiesFile = 'live.txt';
 
 if (isMainThread) {
-  // This block is executed in the main thread
+  // Jumlah worker yang akan digunakan
+  const numWorkers = 2;
   let liveProxies = [];
 
-  // Function to start the worker
-  function startWorker() {
-    const worker = new Worker(__filename);
-    
-    worker.on('message', (message) => {
-      if (message.type === 'updateProxies') {
-        liveProxies = message.data;
-        // Save live proxies to file
-        fs.writeFileSync(liveProxiesFile, liveProxies.join('\n'));
-        console.log('Live proxies updated and saved to live.txt:', liveProxies);
-      }
-    });
+  // Function to start the workers
+  function startWorkers(proxyList) {
+    const chunkSize = Math.ceil(proxyList.length / numWorkers);
 
-    worker.on('error', (error) => {
-      console.error('Worker error:', error);
-    });
+    for (let i = 0; i < numWorkers; i++) {
+      const worker = new Worker(__filename, {
+        workerData: proxyList.slice(i * chunkSize, (i + 1) * chunkSize)
+      });
 
-    worker.on('exit', (code) => {
-      if (code !== 0) {
-        console.error(`Worker stopped with exit code ${code}`);
-      }
-    });
+      worker.on('message', (message) => {
+        if (message.type === 'updateProxies') {
+          liveProxies = liveProxies.concat(message.data);
+          // Save live proxies to file
+          fs.writeFileSync(liveProxiesFile, JSON.stringify(liveProxies, null, 2));
+          console.log('Live proxies updated and saved to live.txt:', liveProxies);
+        }
+      });
+
+      worker.on('error', (error) => {
+        console.error('Worker error:', error);
+      });
+
+      worker.on('exit', (code) => {
+        if (code !== 0) {
+          console.error(`Worker stopped with exit code ${code}`);
+        }
+      });
+    }
   }
-
-  startWorker();
-
-  module.exports = {
-    getLiveProxies: () => liveProxies,
-  };
-
-} else {
-  // This block is executed in the worker thread
 
   async function fetchProxyList() {
     try {
       const response = await axios.get(proxyListUrl);
-      return response.data.split('\n').filter(proxy => proxy.trim() !== '');
+      const proxyList = response.data.split('\n').filter(proxy => proxy.trim() !== '');
+      startWorkers(proxyList);
     } catch (error) {
       console.error('Error fetching proxy list:', error);
-      return [];
     }
   }
 
-  async function checkProxy(proxy) {
+  fetchProxyList();
+
+} else {
+  // This block is executed in the worker thread
+  const proxyList = workerData;
+
+  async function checkProxy(proxy, protocol) {
     try {
-      const response = await axios.get('http://www.google.com', {
+      const response = await axios.get(`${protocol}://www.google.com`, {
         proxy: {
           host: proxy.split(':')[0],
           port: parseInt(proxy.split(':')[1]),
@@ -72,27 +76,26 @@ if (isMainThread) {
   }
 
   async function checkProxies() {
-    const proxies = await fetchProxyList();
     const workingProxies = [];
 
-    await Promise.all(proxies.map(async (proxy) => {
-      const isWorking = await checkProxy(proxy);
-      console.log(`Proxy ${proxy} is ${isWorking ? 'working' : 'not working'}`);
-      if (isWorking) {
-        workingProxies.push(proxy);
+    await Promise.all(proxyList.map(async (proxy) => {
+      const isWorkingHttp = await checkProxy(proxy, 'http');
+      const isWorkingHttps = await checkProxy(proxy, 'https');
+
+      if (isWorkingHttp || isWorkingHttps) {
+        workingProxies.push({
+          proxy,
+          protocol: isWorkingHttps ? 'https' : 'http'
+        });
+        console.log(`Proxy ${proxy} is working with ${isWorkingHttps ? 'HTTPS' : 'HTTP'}`);
+      } else {
+        console.log(`Proxy ${proxy} is not working`);
       }
     }));
-
-    console.log('Sending updated proxies to app.js:', workingProxies);
 
     // Send updated proxies to the parent thread
     parentPort.postMessage({ type: 'updateProxies', data: workingProxies });
   }
 
-  async function startChecking() {
-    await checkProxies(); // Initial check
-    setInterval(checkProxies, 300000); // Recheck every 5 minutes
-  }
-
-  startChecking();
+  checkProxies();
 }
