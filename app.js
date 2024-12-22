@@ -40,10 +40,13 @@ async function fetchUrlWithRetries(url, proxies, retries = config.MAX_RETRIES) {
       });
       return response.data;
     } catch (error) {
-      console.error(`Attempt ${i + 1} failed with proxy ${proxy}:`, error.message);
+      console.error(`Attempt ${i + 1} failed with proxy ${proxy}: ${error.message}`);
       proxies = proxies.filter(p => p !== proxy);
       if (proxies.length === 0) {
         throw new Error('No more proxies available');
+      }
+      if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000)); // Exponential backoff
       }
     }
   }
