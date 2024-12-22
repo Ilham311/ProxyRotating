@@ -13,6 +13,7 @@ let liveProxies = [];
 proxyCheckerProcess.on('message', (message) => {
   if (message.type === 'updateProxies') {
     liveProxies = message.data;
+    console.log('Live proxies updated:', liveProxies);
   }
 });
 
