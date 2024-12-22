@@ -13,7 +13,7 @@ let liveProxies = [];
 proxyCheckerProcess.on('message', (message) => {
   if (message.type === 'updateProxies') {
     liveProxies = message.data;
-    console.log('Live proxies updated:', liveProxies);
+    console.log('Live proxies updated in app.js:', liveProxies);
   }
 });
 
@@ -46,6 +46,8 @@ app.get('/api', async (req, res) => {
   if (!url) {
     return res.status(400).send('URL is required');
   }
+
+  console.log('Current live proxies:', liveProxies); // Logging tambahan untuk debug
 
   if (liveProxies.length === 0) {
     return res.status(503).send('No live proxies available');
