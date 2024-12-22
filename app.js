@@ -1,6 +1,20 @@
 const express = require('express');
 const axios = require('axios');
-const { getLiveProxies } = require('./proxyChecker');
+const { fork } = require('child_process');
+const path = require('path');
+
+const proxyCheckerPath = path.join(__dirname, 'proxyChecker.js');
+
+// Jalankan proxyChecker.js di latar belakang
+const proxyCheckerProcess = fork(proxyCheckerPath);
+
+let liveProxies = [];
+
+proxyCheckerProcess.on('message', (message) => {
+  if (message.type === 'updateProxies') {
+    liveProxies = message.data;
+  }
+});
 
 const app = express();
 const port = 3000;
@@ -11,7 +25,6 @@ app.get('/api', async (req, res) => {
     return res.status(400).send('URL is required');
   }
 
-  const liveProxies = getLiveProxies();
   if (liveProxies.length === 0) {
     return res.status(503).send('No live proxies available');
   }
